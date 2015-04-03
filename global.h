@@ -15,26 +15,26 @@ extern "C" {
     #include <stdlib.h>
     
     typedef struct SimpleCmd {
-        int isBack;     // ÊÇ·ñºóÌ¨ÔËĞĞ
-        char **args;    // ÃüÁî¼°²ÎÊı
-        char *input;    // ÊäÈëÖØ¶¨Ïò
-        char *output;   // Êä³öÖØ¶¨Ïò
+        int isBack;     // æ˜¯å¦åå°è¿è¡Œ
+        char **args;    // å‘½ä»¤åŠå‚æ•°
+        char *input;    // è¾“å…¥é‡å®šå‘
+        char *output;   // è¾“å‡ºé‡å®šå‘
     } SimpleCmd;
 
     typedef struct History {
-        int start;                    //Ê×Î»ÖÃ
-        int end;                      //Ä©Î»ÖÃ
-        char cmds[HISTORY_LEN][100];  //ÀúÊ·ÃüÁî
+        int start;                    //é¦–ä½ç½®
+        int end;                      //æœ«ä½ç½®
+        char cmds[HISTORY_LEN][100];  //å†å²å‘½ä»¤
     } History;
 
     typedef struct Job {
-        int pid;          //½ø³ÌºÅ
-        char cmd[100];    //ÃüÁîÃû
-        char state[10];   //×÷Òµ×´Ì¬
-        struct Job *next; //ÏÂÒ»½ÚµãÖ¸Õë
+        int pid;          //è¿›ç¨‹å·
+        char cmd[100];    //å‘½ä»¤å
+        char state[10];   //ä½œä¸šçŠ¶æ€
+        struct Job *next; //ä¸‹ä¸€èŠ‚ç‚¹æŒ‡é’ˆ
     } Job;
     
-    char inputBuff[100];  //´æ·ÅÊäÈëµÄÃüÁî
+    char inputBuff[100];  //å­˜æ”¾è¾“å…¥çš„å‘½ä»¤
     
     void init();
     void addHistory(char *history);
@@ -45,3 +45,4 @@ extern "C" {
 #endif
 
 #endif	/* _global_H */
+
