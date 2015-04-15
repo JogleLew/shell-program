@@ -13,7 +13,9 @@
 #include <sys/termios.h>
 
 #include "global.h"
-#define DEBUG
+//#define DEBUG
+#define DISPLAY
+#define MAGICSLEEP if(cmd->isBack){sleep(1);}
 int goon = 0, ingnore = 0;       //用于设置signal信号量
 char *envPath[10], cmdBuff[40];  //外部命令的存放路径及读取外部命令的缓冲空间
 History history;                 //历史命令
@@ -127,6 +129,9 @@ void rmJob(int sig, siginfo_t *sip, void* noused){
     pid_t pid;
     Job *now = NULL, *last = NULL;
     
+    #ifdef DEBUG
+    printf("rmJob - SIGCHLD\n");
+    #endif
     if(ingnore == 1){
         ingnore = 0;
         return;
@@ -184,6 +189,19 @@ void ctrl_Z(){
     fgPid = 0;
 }
 
+/*组合键命令ctrl+c*/
+void ctrl_C(){
+    Job *now = NULL;
+    
+    if(fgPid == 0){ //前台没有作业则直接返回
+        return;
+    }
+    ingnore = 1;
+    
+    kill(fgPid, SIGKILL);
+    fgPid = 0;
+}
+
 /*fg命令*/
 void fg_exec(int pid){    
     Job *now = NULL; 
@@ -198,7 +216,7 @@ void fg_exec(int pid){
 		now = now->next;
     
     if(now == NULL){ //未找到作业
-        printf("pid为7%d 的作业不存在！\n", pid);
+        printf("pid为%d的作业不存在！\n", pid);
         return;
     }
 
@@ -214,7 +232,10 @@ void fg_exec(int pid){
     
     printf("%s\n", now->cmd);
     kill(now->pid, SIGCONT); //向对象作业发送SIGCONT信号，使其运行
-    waitpid(fgPid, NULL, 0); //父进程等待前台进程的运行
+    signal(SIGCHLD, setGoon);
+    while(goon == 0) ;
+    goon = 0;
+    //waitpid(fgPid, NULL, 0); //父进程等待前台进程的运行
 }
 
 /*bg命令*/
@@ -230,7 +251,7 @@ void bg_exec(int pid){
 		now = now->next;
     
     if(now == NULL){ //未找到作业
-        printf("pid为7%d 的作业不存在！\n", pid);
+        printf("pid为%d的作业不存在！\n", pid);
         return;
     }
     
@@ -319,6 +340,7 @@ void init(){
     action.sa_flags = SA_SIGINFO;
     sigaction(SIGCHLD, &action, NULL);
     signal(SIGTSTP, ctrl_Z);
+    signal(SIGINT, ctrl_C);
 }
 
 /*******************************************************
@@ -328,6 +350,7 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
     int i, j, k;
     int fileFinished; //记录命令是否解析完毕
     char c, buff[10][40], inputFile[30], outputFile[30], *temp = NULL;
+
     SimpleCmd *cmd = (SimpleCmd*)malloc(sizeof(SimpleCmd));
     
 	//默认为非后台命令，输入输出重定向为null
@@ -447,7 +470,7 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
         cmd->output = (char*)malloc(sizeof(char) * (j + 1));   
         strcpy(cmd->output, outputFile);
     }
-    #ifdef DEBUG
+    #ifdef DISPLAY
     printf("****\n");
     printf("isBack: %d\n",cmd->isBack);
     	for(i = 0; cmd->args[i] != NULL; i++){
@@ -469,13 +492,15 @@ void execOuterCmd(SimpleCmd *cmd){
     int pipeIn, pipeOut;
     
     if(exists(cmd->args[0])){ //命令存在
-
         if((pid = fork()) < 0){
             perror("fork failed");
             return;
         }
-        
+        MAGICSLEEP;							// Jogle: If not sleep, no child process?
         if(pid == 0){ //子进程
+            #ifdef DEBUG
+            printf("i am son\n");
+            #endif
             if(cmd->input != NULL){ //存在输入重定向
                 if((pipeIn = open(cmd->input, O_RDONLY, S_IRUSR|S_IWUSR)) == -1){
                     printf("不能打开文件 %s！\n", cmd->input);
@@ -502,7 +527,6 @@ void execOuterCmd(SimpleCmd *cmd){
                 signal(SIGUSR1, setGoon); //收到信号，setGoon函数将goon置1，以跳出下面的循环
                 while(goon == 0) ; //等待父进程SIGUSR1信号，表示作业已加到链表中
                 goon = 0; //置0，为下一命令做准备
-                
                 printf("[%d]\t%s\t\t%s\n", getpid(), RUNNING, inputBuff);
                 kill(getppid(), SIGUSR1);
             }
@@ -511,25 +535,30 @@ void execOuterCmd(SimpleCmd *cmd){
             if(execv(cmdBuff, cmd->args) < 0){ //执行命令
                 printf("execv failed!\n");
                 return;
-            }
+            } 
         }
 		else{ //父进程
+            #ifdef DEBUG
+            printf("i am father\n");
+            #endif
             if(cmd ->isBack){ //后台命令             
                 fgPid = 0; //pid置0，为下一命令做准备
                 addJob(pid); //增加新的作业
                 kill(pid, SIGUSR1); //子进程发信号，表示作业已加入
-                
                 //等待子进程输出
                 signal(SIGUSR1, setGoon);
                 while(goon == 0) ;
                 goon = 0;
             }else{ //非后台命令
                 fgPid = pid;
-                waitpid(pid, NULL, 0);
+                signal(SIGCHLD, setGoon);
+                while(goon == 0) ;
+                goon = 0;
+                //waitpid(pid, NULL, 0);
             }
 		}
     }else{ //命令不存在
-        printf("找不到命令 15%s\n", inputBuff);
+        printf("找不到命令 %s\n", inputBuff);
     }
 }
 
@@ -575,7 +604,7 @@ void execSimpleCmd(SimpleCmd *cmd){
                 fg_exec(pid);
             }
         }else{
-            printf("fg; 参数不合法，正确格式为：fg %<int>\n");
+            printf("fg; 参数不合法，正确格式为：fg %%<int>\n");
         }
     } else if (strcmp(cmd->args[0], "bg") == 0) { //bg命令
         temp = cmd->args[1];
@@ -587,7 +616,7 @@ void execSimpleCmd(SimpleCmd *cmd){
             }
         }
 		else{
-            printf("bg; 参数不合法，正确格式为：bg %<int>\n");
+            printf("bg; 参数不合法，正确格式为：bg %%<int>\n");
         }
     } else{ //外部命令
         execOuterCmd(cmd);
