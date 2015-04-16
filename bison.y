@@ -107,7 +107,8 @@ int main(int argc, char** argv) {
     while(1){
         i = 0;
         while((c = getchar()) != '\n'){ //读入一行命令
-            inputBuff[i++] = c;
+            if ((int)c != -1)
+                inputBuff[i++] = c;
         }
         inputBuff[i] = '\0';
 
