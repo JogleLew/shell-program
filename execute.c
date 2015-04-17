@@ -14,8 +14,6 @@
 
 #include "global.h"
 #define DEBUG
-#define DISPLAY
-#define MAGICSLEEP if(cmd->isBack){sleep(1);}
 int goon = 0, ingnore = 0;       //用于设置signal信号量
 char *envPath[10], cmdBuff[40];  //外部命令的存放路径及读取外部命令的缓冲空间
 History history;                 //历史命令
@@ -25,19 +23,6 @@ pid_t fgPid;                     //当前前台作业的进程号
 /*******************************************************
                   工具以及辅助方法
 ********************************************************/
-#ifdef DEBUG
-void printJobs()
-{
-    Job *t = head;
-    printf("----------------------------------------\n");
-    while (t != NULL){
-        printf("%d\t\t%s\t\t%s\n", t->pid, t->cmd, t->state);
-        t = t->next;
-    }
-    printf("----------------------------------------\n");
-}
-#endif
-
 /*判断命令是否存在*/
 int exists(char *cmdFile){
     int i = 0;
@@ -52,11 +37,10 @@ int exists(char *cmdFile){
             if(access(cmdBuff, F_OK) == 0){ //命令文件被找到
                 return 1;
             }
-            
             i++;
         }
     }
-    
+
     return 0; 
 }
 
@@ -146,7 +130,6 @@ void rmJob(int sig, siginfo_t *sip, void* noused){
         ingnore = 0;
         return;
     }
-    
     pid = sip->si_pid;
 
     now = head;
@@ -155,10 +138,11 @@ void rmJob(int sig, siginfo_t *sip, void* noused){
 		now = now->next;
 	}
     
+    waitpid(-1, NULL, WNOHANG); //jogle: 防止Ctrl+C产生僵尸进程，进行清理
     if(now == NULL){ //作业不存在，则不进行处理直接返回
         return;
     }
-    
+
 	//开始移除该作业
     if(now == head){
         head = now->next;
@@ -226,6 +210,7 @@ void ctrl_C(){
 
     kill(fgPid, SIGKILL);
     fgPid = 0;
+    ingnore = 0;	//jogle: 允许rmJob清理进程
 }
 
 /*fg命令*/
@@ -258,10 +243,10 @@ void fg_exec(int pid){
     
     printf("%s\n", now->cmd);
     kill(now->pid, SIGCONT); //向对象作业发送SIGCONT信号，使其运行
-    signal(SIGCHLD, setGoon);
-    while(goon == 0) ;
-    goon = 0;
-    waitpid(fgPid, NULL, WNOHANG); //父进程等待前台进程的运行
+
+    ingnore = 0;	//jogle: 允许rmJob清理进程
+    pause();		//jogle: 等待SIGCHLD信号到来
+    waitpid(pid, NULL, WNOHANG);	//jogle: 如果进程运行结束，父进程进行清理
 }
 
 /*bg命令*/
@@ -283,8 +268,8 @@ void bg_exec(int pid){
     
     strcpy(now->state, RUNNING); //修改对象作业的状态
     printf("[%d]\t%s\t\t%s\n", now->pid, now->state, now->cmd);
-    
     kill(now->pid, SIGCONT); //向对象作业发送SIGCONT信号，使其运行
+    ingnore = 0;	//jogle: 如果后台进程运行结束，允许rmJob清理
 }
 
 /*******************************************************
@@ -364,9 +349,9 @@ void init(){
     action.sa_sigaction = rmJob;
     sigfillset(&action.sa_mask);
     action.sa_flags = SA_SIGINFO;
-    sigaction(SIGCHLD, &action, NULL);
-    signal(SIGTSTP, ctrl_Z);
-    signal(SIGINT, ctrl_C);
+    sigaction(SIGCHLD, &action, NULL);	//jogle: 注册SIGCHLD信号
+    signal(SIGTSTP, ctrl_Z);	//jogle: 注册SIGTSTP信号，处理Ctrl+Z
+    signal(SIGINT, ctrl_C);		//jogle: 注册SIGINT信号，处理Ctrl+C
 }
 
 /*******************************************************
@@ -496,7 +481,7 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
         cmd->output = (char*)malloc(sizeof(char) * (j + 1));   
         strcpy(cmd->output, outputFile);
     }
-    #ifdef DISPLAY
+    #ifdef DEBUG
     printf("****\n");
     printf("isBack: %d\n",cmd->isBack);
     	for(i = 0; cmd->args[i] != NULL; i++){
@@ -512,22 +497,19 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
 /*******************************************************
                       命令执行
 ********************************************************/
-void ppp()
-{
-	printf("SIGTSTP detected\n");
-}
-
 /*执行外部命令*/
 void execOuterCmd(SimpleCmd *cmd){
     pid_t pid;
     int pipeIn, pipeOut;
+    Job *now;
     
     if(exists(cmd->args[0])){ //命令存在
         if((pid = fork()) < 0){
             perror("fork failed");
             return;
         }
-        MAGICSLEEP;
+        if(cmd->isBack)			//jogle: 如果要创建后台进程，父进程需等待子进程创建完成
+        	sleep(1);			//jogle: Magic Sleep
         if(pid == 0){ //子进程
             if(cmd->input != NULL){ //存在输入重定向
                 if((pipeIn = open(cmd->input, O_RDONLY, S_IRUSR|S_IWUSR)) == -1){
@@ -557,17 +539,17 @@ void execOuterCmd(SimpleCmd *cmd){
                 goon = 0; //置0，为下一命令做准备
                 printf("[%d]\t%s\t\t%s\n", getpid(), RUNNING, inputBuff);
                 kill(getppid(), SIGUSR1);
-                signal(SIGINT, SIG_IGN);
-                signal(SIGTSTP, SIG_IGN);
             }
-            
+
+            signal(SIGINT, SIG_IGN);	//jogle: 后台进程显式忽略Ctrl+C
+            signal(SIGTSTP, SIG_IGN);	//jogle: 后台进程显式忽略Ctrl+Z
             justArgs(cmd->args[0]);
             if(execv(cmdBuff, cmd->args) < 0){ //执行命令
                 printf("execv failed!\n");
                 return;
             }
         }
-		else{ //父进程
+        else{ //父进程
             if(cmd ->isBack){ //后台命令             
                 fgPid = 0; //pid置0，为下一命令做准备
                 addJob(pid); //增加新的作业
@@ -578,11 +560,9 @@ void execOuterCmd(SimpleCmd *cmd){
                 goon = 0;
             }else{ //非后台命令
                 fgPid = pid;
-                signal(SIGCHLD, setGoon);
-                while(goon == 0) ;
-                goon = 0;
-                waitpid(pid, NULL, WNOHANG);
-	        }
+                pause();		//jogle: 等待SIGCHLD信号到来
+                waitpid(pid, NULL, WNOHANG);	//jogle: 如果进程运行结束，父进程进行清理
+            }
 		}
     }else{ //命令不存在
         printf("找不到命令 %s\n", inputBuff);

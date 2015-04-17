@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
             commandDone = 0;
             addHistory(inputBuff);
         }
-        
+
         printf("yourname@computer:%s$ ", getcwd(0,0)); //打印提示符信息
      }
 
