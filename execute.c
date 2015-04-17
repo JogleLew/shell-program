@@ -537,14 +537,48 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
     return cmd;
 }
 
+void execPipeCmd(SimpleCmd *cmd, int pipeIn, int pipeOut){
+	pid_t p;
+	int status;
+	if ((p=fork())<0)
+	{
+		perror("Fork failed");
+		exit(errno);				
+	}
+	if (!p)//child process
+	{
+		close(pipeOut);
+		dup2(pipeIn,0);
+		close(pipeIn);
+		if (cmd ->next !=NULL){
+			close(pipeIn);
+			dup2(pipeOut,1);
+			close(pipeOut);
+			
+			execvp(cmd->args[0],cmd->args);
+		}
+		else{
+			execvp(cmd->args[0],cmd->args);
+		}
+	}
+	//father process
+	if (cmd ->next !=NULL)
+		execPipeCmd(cmd->next,pipeIn,pipeOut);
+	
+		close(pipeIn);
+		close(pipeOut);
+		waitpid(p,&status,0);
+	
+	return;
+}
+
 /*******************************************************
                       命令执行
 ********************************************************/
 /*执行外部命令*/
 void execOuterCmd(SimpleCmd *cmd){
-    SimpleCmd *pCmd;
-    pid_t pid,p[2];
-    int pipeIn, pipeOut, pipe_fd[2],status;
+    pid_t pid,tmp;
+    int pipeIn, pipeOut,status,pipe_fd[2];
     
     if(exists(cmd->args[0])){ //命令存在
 
@@ -578,46 +612,27 @@ void execOuterCmd(SimpleCmd *cmd){
             }
 
 	    if (cmd->next != NULL){ // pipeline is on!!!
+		pipe(pipe_fd);
 		printf("now we are on it!\n");
-	    	while (cmd->next!=NULL){
-			pCmd=cmd->next;
-			if (pipe(pipe_fd)<0){
-				perror("pipeline failed!");
-				exit(errno);
-			}
-			if ((p[0]=fork())<0)
-			{
-				perror("pipeline failed!");
-				exit(errno);
-			}
-			if (!p[0])
-			{
-				close(pipe_fd[0]);
-				dup2(pipe_fd[1],1);
-				close(pipe_fd[1]);
-				execvp(cmd->args[0],cmd->args);
-			}
-			if (p[0])
-			{
-				if ((p[1]=fork())<0)
-				{
-					perror("Fork failed");
-					exit(errno);				
-				}
-				if (!p[1])
-				{
-					close (pipe_fd[1]);
-					dup2(pipe_fd[0],0);
-					close(pipe_fd[0]);
-					execvp(pCmd->args[0],pCmd->args);
-				}
-				close(pipe_fd[0]);
-				close(pipe_fd[1]);
-				waitpid(p[1],&status,0);
-				printf("Done waiting for more.\n");
-			}
-			cmd=pCmd;	
+		if ((tmp=fork())<0)
+		{
+			perror("pipeline failed!");
+			exit(errno);
 		}
+		if (!tmp)//child process
+		{
+			close(pipe_fd[0]);
+			dup2(pipe_fd[1],1);
+			close(pipe_fd[1]);
+
+			execvp(cmd->args[0],cmd->args);
+		}
+		//father process
+		execPipeCmd(cmd->next,pipe_fd[0],pipe_fd[1]);
+
+		//close(pipe_fd[0]);
+		//close(pipe_fd[1]);
+		//waitpid(tmp,&status,0);
 		return;
 	    }
             

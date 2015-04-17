@@ -1,0 +1,11 @@
+aa
+a.txt
+bison.tab.c
+bison.tab.o
+bison.y
+execute.c
+execute.o
+global.h
+makefile
+user-sh
+ysh.conf
