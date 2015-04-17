@@ -19,7 +19,6 @@ extern "C" {
         char **args;    // 命令及参数
         char *input;    // 输入重定向
         char *output;   // 输出重定向
-	struct SimpleCmd *next;// next cmd only if it's a pipeline
     } SimpleCmd;
 
     typedef struct History {
@@ -46,3 +45,4 @@ extern "C" {
 #endif
 
 #endif	/* _global_H */
+

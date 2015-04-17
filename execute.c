@@ -325,14 +325,14 @@ void init(){
                       命令解析
 ********************************************************/
 SimpleCmd* handleSimpleCmdStr(int begin, int end){
-    int i, j, k, prev,t1,t2,eve;
+    int i, j, k;
     int fileFinished; //记录命令是否解析完毕
-    char c, buff[10][40], inputFile[30], outputFile[30], *temp = NULL, tubeCount=0, initial=0;
-    SimpleCmd *cmd = (SimpleCmd*)malloc(sizeof(SimpleCmd)),*p;
+    char c, buff[10][40], inputFile[30], outputFile[30], *temp = NULL;
+    SimpleCmd *cmd = (SimpleCmd*)malloc(sizeof(SimpleCmd));
     
 	//默认为非后台命令，输入输出重定向为null
     cmd->isBack = 0;
-    cmd->input = cmd->output = cmd->next = NULL;
+    cmd->input = cmd->output = NULL;
     
     //初始化相应变量
     for(i = begin; i<10; i++){
@@ -347,7 +347,6 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
         i++;
     }
     
-    prev=0;
     k = 0;
     j = 0;
     fileFinished = 0;
@@ -357,13 +356,10 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
         switch(inputBuff[i]){ 
             case ' ':
             case '\t': //命令名及参数的结束标志
-		if (j==0)
-		    break;
                 temp[j] = '\0';
                 j = 0;
                 if(!fileFinished){
                     k++;
-		    printf("%d\n",k);
                     temp = buff[k];
                 }
                 break;
@@ -396,48 +392,6 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
                 fileFinished = 1;
                 i++;
                 break;
-	
-            case '|': //tube标志
-		printf("this is tube function!\n");
-		eve=0;
-                if(j != 0){
-		    //此判断为防止命令直接挨着<符号导致判断为同一个参数，如果ls<sth
-                    temp[j] = '\0';
-                    j = 0;
-                    if(!fileFinished){
-                        k++;
-                        temp = buff[k];
-                    }
-                }
-		if (initial == 0){
-			p=cmd;
-			initial++;
-
-			p->args = (char**)malloc(sizeof(char*) * (k - prev));
-    			p->args[k-prev] = NULL;
-    			for(t1 = prev; t1<k; t1++){
-       				t2 = strlen(buff[t1]);
-        			p->args[eve] = (char*)malloc(sizeof(char) * (t2 + 1));   
-        			strcpy(p->args[eve++], buff[t1]);
-    			}
-		}
-		else{	
-			p->next= (SimpleCmd *) malloc (sizeof (SimpleCmd));
-			p=p->next;
-			p->next=NULL;
-
-			p->args = (char**)malloc(sizeof(char*) * (k - prev));
-    			p->args[k-prev] = NULL;
-    			for(t1 = prev; t1<k; t1++){
-       				t2 = strlen(buff[t1]);
-        			p->args[eve] = (char*)malloc(sizeof(char) * (t2 + 1));   
-        			strcpy(p->args[eve++], buff[t1]);
-    			}
-		}
-		prev=k;	
-                fileFinished = 0;
-                i++;
-                break;
                 
             case '&': //后台运行标志
                 if(j != 0){
@@ -462,7 +416,7 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
         while(i < end && (inputBuff[i] == ' ' || inputBuff[i] == '\t')){
             i++;
         }
-    }
+	}
     
     if(inputBuff[end-1] != ' ' && inputBuff[end-1] != '\t' && inputBuff[end-1] != '&'){
         temp[j] = '\0';
@@ -470,28 +424,14 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
             k++;
         }
     }
-    if (initial==0){
+    
 	//依次为命令名及其各个参数赋值
-    	cmd->args = (char**)malloc(sizeof(char*) * (k + 1));
-    	cmd->args[k] = NULL;
-    	for(i = 0; i<k; i++){
-       		j = strlen(buff[i]);
-        	cmd->args[i] = (char*)malloc(sizeof(char) * (j + 1));   
-        	strcpy(cmd->args[i], buff[i]);
-    	}
-    }
-    else{
-	eve=0;
-    	p->next= (SimpleCmd *) malloc (sizeof (SimpleCmd));
-	p=p->next;
-	p->next=NULL;
-	p->args = (char**)malloc(sizeof(char*) * (k - prev));
-    	p->args[k-prev] = NULL;
-    	for(t1 = prev; t1<k; t1++){
-       		t2 = strlen(buff[t1]);
-        	p->args[eve] = (char*)malloc(sizeof(char) * (t2 + 1));   
-        	strcpy(p->args[eve++], buff[t1]);
-    	}
+    cmd->args = (char**)malloc(sizeof(char*) * (k + 1));
+    cmd->args[k] = NULL;
+    for(i = 0; i<k; i++){
+        j = strlen(buff[i]);
+        cmd->args[i] = (char*)malloc(sizeof(char) * (j + 1));   
+        strcpy(cmd->args[i], buff[i]);
     }
     
 	//如果有输入重定向文件，则为命令的输入重定向变量赋值
@@ -507,7 +447,6 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
         cmd->output = (char*)malloc(sizeof(char) * (j + 1));   
         strcpy(cmd->output, outputFile);
     }
-
     #ifdef DEBUG
     printf("****\n");
     printf("isBack: %d\n",cmd->isBack);
@@ -516,22 +455,6 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
 	}
     printf("input: %s\n",cmd->input);
     printf("output: %s\n",cmd->output);
-    if (cmd->next!=NULL){
-	printf("tube is on!!!\n");
-	p=cmd;
-	while(p!=NULL){
-	    t1=0;
-	    while (p->args[t1]!=NULL){
-		printf("%s ",p->args[t1]);
-	 	t1++;
-	    }
-	    printf("\n");
-	    p=p->next;
-	}
-    }
-    else{
-	printf("tube is off\n");
-    }
     printf("****\n");
     #endif
     return cmd;
@@ -542,9 +465,8 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
 ********************************************************/
 /*执行外部命令*/
 void execOuterCmd(SimpleCmd *cmd){
-    SimpleCmd *pCmd;
-    pid_t pid,p[2];
-    int pipeIn, pipeOut, pipe_fd[2],status;
+    pid_t pid;
+    int pipeIn, pipeOut;
     
     if(exists(cmd->args[0])){ //命令存在
 
@@ -552,9 +474,8 @@ void execOuterCmd(SimpleCmd *cmd){
             perror("fork failed");
             return;
         }
-        sleep(1);
+        
         if(pid == 0){ //子进程
-	    printf("this is a child process!\n");
             if(cmd->input != NULL){ //存在输入重定向
                 if((pipeIn = open(cmd->input, O_RDONLY, S_IRUSR|S_IWUSR)) == -1){
                     printf("不能打开文件 %s！\n", cmd->input);
@@ -576,50 +497,6 @@ void execOuterCmd(SimpleCmd *cmd){
                     return;
                 }
             }
-
-	    if (cmd->next != NULL){ // pipeline is on!!!
-		printf("now we are on it!\n");
-	    	while (cmd->next!=NULL){
-			pCmd=cmd->next;
-			if (pipe(pipe_fd)<0){
-				perror("pipeline failed!");
-				exit(errno);
-			}
-			if ((p[0]=fork())<0)
-			{
-				perror("pipeline failed!");
-				exit(errno);
-			}
-			if (!p[0])
-			{
-				close(pipe_fd[0]);
-				dup2(pipe_fd[1],1);
-				close(pipe_fd[1]);
-				execvp(cmd->args[0],cmd->args);
-			}
-			if (p[0])
-			{
-				if ((p[1]=fork())<0)
-				{
-					perror("Fork failed");
-					exit(errno);				
-				}
-				if (!p[1])
-				{
-					close (pipe_fd[1]);
-					dup2(pipe_fd[0],0);
-					close(pipe_fd[0]);
-					execvp(pCmd->args[0],pCmd->args);
-				}
-				close(pipe_fd[0]);
-				close(pipe_fd[1]);
-				waitpid(p[1],&status,0);
-				printf("Done waiting for more.\n");
-			}
-			cmd=pCmd;	
-		}
-		return;
-	    }
             
             if(cmd->isBack){ //若是后台运行命令，等待父进程增加作业
                 signal(SIGUSR1, setGoon); //收到信号，setGoon函数将goon置1，以跳出下面的循环
@@ -636,19 +513,17 @@ void execOuterCmd(SimpleCmd *cmd){
                 return;
             }
         }
-	else{ //父进程
-	    printf("this is a father process!\n");
-            if(cmd->isBack){ //后台命令             
+		else{ //父进程
+            if(cmd ->isBack){ //后台命令             
                 fgPid = 0; //pid置0，为下一命令做准备
-                addJob(pid); //增加新的作业S
+                addJob(pid); //增加新的作业
                 kill(pid, SIGUSR1); //子进程发信号，表示作业已加入
                 
                 //等待子进程输出
                 signal(SIGUSR1, setGoon);
                 while(goon == 0) ;
                 goon = 0;
-            }
-	    else{ //非后台命令
+            }else{ //非后台命令
                 fgPid = pid;
                 waitpid(pid, NULL, 0);
             }
@@ -733,3 +608,4 @@ void execute(){
     SimpleCmd *cmd = handleSimpleCmdStr(0, strlen(inputBuff));
     execSimpleCmd(cmd);
 }
+

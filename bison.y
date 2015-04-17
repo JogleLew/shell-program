@@ -1,5 +1,6 @@
 %{
     #include "global.h"
+    #include <unistd.h>
 
     int yylex ();
     void yyerror ();
@@ -21,7 +22,7 @@ command         :   fgCommand
 fgCommand       :   simpleCmd
 ;
 
-simpleCmd       :   progInvocation inputRedirect outputRedirect tube
+simpleCmd       :   progInvocation inputRedirect outputRedirect
 ;
 
 progInvocation  :   STRING args
@@ -33,10 +34,6 @@ inputRedirect   :   /* empty */
 
 outputRedirect  :   /* empty */
                     |'>' STRING
-;
-
-tube	  	:   /* empty */
-                    |'|' STRING
 ;
 
 args            :   /* empty */
@@ -105,7 +102,7 @@ int main(int argc, char** argv) {
     init(); //初始化环境
     commandDone = 0;
     
-    printf("yourname@computer:%s$ ", get_current_dir_name()); //打印提示符信息
+    printf("yourname@computer:%s$ ", getcwd(NULL,NULL)); //打印提示符信息
 
     while(1){
         i = 0;
@@ -124,8 +121,9 @@ int main(int argc, char** argv) {
             addHistory(inputBuff);
         }
         
-        printf("yourname@computer:%s$ ", get_current_dir_name()); //打印提示符信息
+        printf("yourname@computer:%s$ ", getcwd(NULL,NULL)); //打印提示符信息
      }
 
     return (EXIT_SUCCESS);
 }
+
