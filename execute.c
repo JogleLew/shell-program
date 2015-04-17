@@ -328,7 +328,7 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
     int i, j, k, prev,t1,t2,eve;
     int fileFinished; //记录命令是否解析完毕
     char c, buff[10][40], inputFile[30], outputFile[30], *temp = NULL, tubeCount=0, initial=0;
-    SimpleCmd *cmd = (SimpleCmd*)malloc(sizeof(SimpleCmd)),*p;
+    SimpleCmd *cmd = (SimpleCmd*)malloc(sizeof(SimpleCmd)),*p,*mark_output,*mark_input;
     
 	//默认为非后台命令，输入输出重定向为null
     cmd->isBack = 0;
@@ -361,9 +361,10 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
 		    break;
                 temp[j] = '\0';
                 j = 0;
+
                 if(!fileFinished){
+		   // printf("met with end: %s",temp);
                     k++;
-		    printf("%d\n",k);
                     temp = buff[k];
                 }
                 break;
@@ -497,15 +498,18 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
 	//如果有输入重定向文件，则为命令的输入重定向变量赋值
     if(strlen(inputFile) != 0){
         j = strlen(inputFile);
-        cmd->input = (char*)malloc(sizeof(char) * (j + 1));
-        strcpy(cmd->input, inputFile);
+        mark_input->input = (char*)malloc(sizeof(char) * (j + 1));
+        strcpy(mark_input->input, inputFile);
     }
 
     //如果有输出重定向文件，则为命令的输出重定向变量赋值
     if(strlen(outputFile) != 0){
         j = strlen(outputFile);
-        cmd->output = (char*)malloc(sizeof(char) * (j + 1));   
-        strcpy(cmd->output, outputFile);
+	p=cmd;
+	while (p->next!=NULL)
+		p=p->next;
+        p->output = (char*)malloc(sizeof(char) * (j + 1));   
+        strcpy(p->output, outputFile);
     }
 
     #ifdef DEBUG
@@ -537,38 +541,57 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
     return cmd;
 }
 
-void execPipeCmd(SimpleCmd *cmd, int pipeIn, int pipeOut){
-	pid_t p;
-	int status;
-	if ((p=fork())<0)
+void execPipeCmd(SimpleCmd *cmd, SimpleCmd *next){
+	pid_t p[2];
+	int status,pipe_fd[2];
+	pipe(pipe_fd);
+	if ((p[0]=fork())<0)
 	{
 		perror("Fork failed");
 		exit(errno);				
 	}
-	if (!p)//child process
+	if (!p[0])//child process
 	{
-		close(pipeOut);
-		dup2(pipeIn,0);
-		close(pipeIn);
-		if (cmd ->next !=NULL){
-			close(pipeIn);
-			dup2(pipeOut,1);
-			close(pipeOut);
-			
+		close(pipe_fd[0]);
+		dup2(pipe_fd[1],1);
+		close(pipe_fd[1]);
+		if (cmd->output!=NULL)
+			if (cmd->next==NULL)
+				execOuterCmd(cmd);
+			else
+				;
+		else		
 			execvp(cmd->args[0],cmd->args);
-		}
-		else{
-			execvp(cmd->args[0],cmd->args);
-		}
 	}
 	//father process
-	if (cmd ->next !=NULL)
-		execPipeCmd(cmd->next,pipeIn,pipeOut);
-	
-		close(pipeIn);
-		close(pipeOut);
-		waitpid(p,&status,0);
-	
+	if (p[0]){
+		waitpid(p[0],&status,0);
+		if ((p[1]=fork())<0)
+		{
+			perror("Fork failed");
+			exit(errno);				
+		}
+		if (!p[1]){
+			close(pipe_fd[1]);
+			dup2(pipe_fd[0],0);
+			close(pipe_fd[0]);
+			if (next->next!=NULL){
+				execPipeCmd(next,next->next);
+			}
+			else{
+				if (next->output!=NULL)
+					if (next->next==NULL)
+						execOuterCmd(next);
+					else
+						;
+				else		
+				execvp(next->args[0],next->args);
+			}
+		}
+		close(pipe_fd[0]);
+		close(pipe_fd[1]);
+		waitpid(p[1],&status,0);
+	}
 	return;
 }
 
@@ -577,6 +600,7 @@ void execPipeCmd(SimpleCmd *cmd, int pipeIn, int pipeOut){
 ********************************************************/
 /*执行外部命令*/
 void execOuterCmd(SimpleCmd *cmd){
+    SimpleCmd * p;
     pid_t pid,tmp;
     int pipeIn, pipeOut,status,pipe_fd[2];
     
@@ -588,7 +612,7 @@ void execOuterCmd(SimpleCmd *cmd){
         }
         sleep(1);
         if(pid == 0){ //子进程
-	    printf("this is a child process!\n");
+	    //printf("this is a child process!\n");
             if(cmd->input != NULL){ //存在输入重定向
                 if((pipeIn = open(cmd->input, O_RDONLY, S_IRUSR|S_IWUSR)) == -1){
                     printf("不能打开文件 %s！\n", cmd->input);
@@ -612,27 +636,7 @@ void execOuterCmd(SimpleCmd *cmd){
             }
 
 	    if (cmd->next != NULL){ // pipeline is on!!!
-		pipe(pipe_fd);
-		printf("now we are on it!\n");
-		if ((tmp=fork())<0)
-		{
-			perror("pipeline failed!");
-			exit(errno);
-		}
-		if (!tmp)//child process
-		{
-			close(pipe_fd[0]);
-			dup2(pipe_fd[1],1);
-			close(pipe_fd[1]);
-
-			execvp(cmd->args[0],cmd->args);
-		}
-		//father process
-		execPipeCmd(cmd->next,pipe_fd[0],pipe_fd[1]);
-
-		//close(pipe_fd[0]);
-		//close(pipe_fd[1]);
-		//waitpid(tmp,&status,0);
+		execPipeCmd(cmd,cmd->next);
 		return;
 	    }
             
@@ -652,7 +656,7 @@ void execOuterCmd(SimpleCmd *cmd){
             }
         }
 	else{ //父进程
-	    printf("this is a father process!\n");
+	    //printf("this is a father process!\n");
             if(cmd->isBack){ //后台命令             
                 fgPid = 0; //pid置0，为下一命令做准备
                 addJob(pid); //增加新的作业S
