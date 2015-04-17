@@ -50,7 +50,7 @@ int yylex(){
     int flag;
     char c;
     
-	//跳过空格等无用信息
+    //跳过空格等无用信息
     while(offset < len && (inputBuff[offset] == ' ' || inputBuff[offset] == '\t')){ 
         offset++;
     }
