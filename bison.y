@@ -1,11 +1,10 @@
 %{
     #include "global.h"
     #include <unistd.h>
+    #include <string.h>
 
     int yylex ();
     void yyerror ();
-      
-    int offset, len, commandDone;
 %}
 
 %token STRING
@@ -61,15 +60,18 @@ int yylex(){
         
         if(c == ' ' || c == '\t'){
             offset++;
+            // printf("%d\n", STRING);
             return STRING;
         }
         
         if(c == '<' || c == '>' || c == '&'){
             if(flag == 1){
                 flag = 0;
+                // printf("%d\n", STRING);
                 return STRING;
             }
             offset++;
+            // printf("%c\n", c);
             return c;
         }
         
@@ -78,6 +80,7 @@ int yylex(){
     }
     
     if(flag == 1){
+        // printf("%d\n", STRING);
         return STRING;
     }else{
         return 0;
@@ -101,7 +104,7 @@ int main(int argc, char** argv) {
 
     init(); //初始化环境
     commandDone = 0;
-    
+
     printf("yourname@computer:%s$ ", getcwd(0,0)); //打印提示符信息
 
     while(1){
@@ -114,7 +117,8 @@ int main(int argc, char** argv) {
 
         len = i;
         offset = 0;
-        
+
+        //memset(inputBuff, 0, sizeof(inputBuff));
         yyparse(); //调用语法分析函数，该函数由yylex()提供当前输入的单词符号
 
         if(commandDone == 1){ //命令已经执行完成后，添加历史记录信息

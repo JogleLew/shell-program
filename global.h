@@ -40,6 +40,8 @@ extern "C" {
     void addHistory(char *history);
     void execute();
 
+    int offset, len, commandDone;
+
 #ifdef	__cplusplus
 }
 #endif

@@ -11,7 +11,7 @@
 #include <sys/wait.h>
 #include <sys/ioctl.h>
 #include <sys/termios.h>
-
+#include <dirent.h>
 #include "global.h"
 #define DEBUG
 int goon = 0, ingnore = 0;       //用于设置signal信号量
@@ -357,10 +357,79 @@ void init(){
 /*******************************************************
                       命令解析
 ********************************************************/
+int getlength(char *s){
+    int length;
+    for(length = 0;s[length] != '\0';length++);
+    return length;
+}
+
+
+int TPF(char* str1, char* pattern)
+{
+  if (str1 == NULL) return 0;
+  if (pattern == NULL) return 0;
+  int len1 = getlength(str1);
+  int len2 = getlength(pattern);
+  int mark = 0;
+  int p1 = 0, p2 = 0;
+
+  while (p1<len1 && p2<len2)
+  {
+    if (pattern[p2] == '?')
+    {
+      p1++;
+      p2++;
+      continue;
+    }
+    if (pattern[p2] == '*')
+    {
+
+      p2++;
+      mark = p2;
+      continue;
+    }
+    if (str1[p1] != pattern[p2])
+    {
+      if (p1 == 0 && p2 == 0)
+      {
+
+        return 0;
+      }
+      p1 -= p2 - mark - 1;
+      p2 = mark;
+      continue;
+    }
+
+    p1++;
+    p2++;
+  }
+  if (p2 == len2)
+  {
+    if (p1 == len1)
+    {
+      return 1;
+    }
+    if (pattern[p2 - 1] == '*')
+    {
+      return 1;
+    }
+    return 0;
+  }
+  while (p2<len2)
+  {
+    if (pattern[p2] != '*')
+      return 0;
+    p2++;
+  }
+  return 1;
+}
+
 SimpleCmd* handleSimpleCmdStr(int begin, int end){
-    int i, j, k;
+    int i, j, k, cmdnum = 1, flag;
     int fileFinished; //记录命令是否解析完毕
-    char c, buff[10][40], inputFile[30], outputFile[30], *temp = NULL;
+    char c, buff[10][40], inputFile[30], outputFile[30], *temp = NULL, temp1[10][40];
+    struct dirent *entry;
+    DIR *dp;
 
     SimpleCmd *cmd = (SimpleCmd*)malloc(sizeof(SimpleCmd));
     
@@ -460,7 +529,7 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
     }
     
     //依次为命令名及其各个参数赋值
-    cmd->args = (char**)malloc(sizeof(char*) * (k + 1));
+    cmd->args = (char**)malloc(sizeof(char*) * 100);
     cmd->args[k] = NULL;
     for(i = 0; i<k; i++){
         j = strlen(buff[i]);
@@ -468,6 +537,54 @@ SimpleCmd* handleSimpleCmdStr(int begin, int end){
         strcpy(cmd->args[i], buff[i]);
     }
     
+    //yinhang: 进行通配符的识别和cmd的重写
+    memset(temp1, 0, sizeof(temp1));
+    for(i = 0;i < k;i++){
+        strcpy(temp1[i], cmd->args[i]);
+        #ifdef DEBUG
+        printf("%s\n", temp1[i]);
+        #endif
+    }
+
+    for(i = 1;i < k;i++){
+        if((dp = opendir(getcwd(0,0))) == NULL) {
+            fprintf(stderr,"cannot open directory: %s\n", getcwd(0,0));
+        }
+        flag = 0;
+        while((entry = readdir(dp)) != NULL) {
+            if (strlen(entry->d_name) == 1 && entry->d_name[0] == '.')
+                continue;
+            if (strlen(entry->d_name) == 2 && entry->d_name[0] == '.' && entry->d_name[1] == '.')
+                continue;
+            if(TPF(entry->d_name,temp1[i])){
+                flag++;
+                #ifdef DEBUG
+                printf("%d",flag);
+                #endif
+                if(cmdnum < k)
+                    strcpy(cmd->args[cmdnum++],entry->d_name);
+                else{
+                    cmd->args[cmdnum] = (char*)malloc(sizeof(char) * (getlength(entry->d_name)));
+                    strcpy(cmd->args[cmdnum++],entry->d_name);
+                }
+            }
+        }
+        #ifdef DEBUG
+        printf("now flag = %d",flag);
+        #endif
+        if(flag == 0){
+            if(cmdnum >= k)
+                cmd->args[cmdnum] = (char*)malloc(sizeof(char) * (getlength(temp1[i])));
+            strcpy(cmd->args[cmdnum++],temp1[i]);
+        }
+    }
+
+    cmd->args[cmdnum] = NULL;
+    strcpy(cmd->args[0],temp1[0]);
+    #ifdef DEBUG
+    printf("cmd-args[%d] = NULL",cmdnum);
+    #endif
+
     //如果有输入重定向文件，则为命令的输入重定向变量赋值
     if(strlen(inputFile) != 0){
         j = strlen(inputFile);
@@ -632,9 +749,9 @@ void execSimpleCmd(SimpleCmd *cmd){
     //释放结构体空间
     for(i = 0; cmd->args[i] != NULL; i++){
         free(cmd->args[i]);
-        free(cmd->input);
-        free(cmd->output);
     }
+    free(cmd->input);
+    free(cmd->output);
 }
 
 /*******************************************************
