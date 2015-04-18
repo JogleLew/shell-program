@@ -11,6 +11,7 @@ int pp = 0;
 "<" { inputBuff[offset++] = '<'; return '<'; }
 ">" { inputBuff[offset++] = '>'; return '>'; }
 "&" { inputBuff[offset++] = '&'; return '&'; }
-[^<>& \t\n]+ { for (pp = 0; pp < strlen(yytext); pp++) {inputBuff[offset++] = yytext[pp];} return STRING; }
+"|" { inputBuff[offset++] = '|'; return '|'; }
+[^<>&| \t\n]+ { for (pp = 0; pp < strlen(yytext); pp++) {inputBuff[offset++] = yytext[pp];} return STRING; }
 [\n] {return 0;}
 %%

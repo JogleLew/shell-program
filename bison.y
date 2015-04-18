@@ -19,6 +19,7 @@ command         :   fgCommand
 ;
 
 fgCommand       :   simpleCmd
+                    |simpleCmd '|' fgCommand
 ;
 
 simpleCmd       :   progInvocation inputRedirect outputRedirect
@@ -67,8 +68,10 @@ int main(int argc, char** argv) {
 
         memset(inputBuff, 0, sizeof(inputBuff));
         c = getchar();
-        if ((int) c != -1)
+
+        if ((int) c >= 0)
             ungetc(c, stdin);
+	
         yyparse(); //调用语法分析函数，该函数由yylex()提供当前输入的单词符号
 
         if(commandDone == 1){ //命令已经执行完成后，添加历史记录信息
